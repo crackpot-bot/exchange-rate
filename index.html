@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>💱 美元汇率 24h 实时比对 · 工商银行 vs 农业银行</title>
+    <script src="static/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg: #f0f2f5; --card-bg: #fff; --text: #1a1a2e; --text-secondary: #6b7280;
+            --border: #e5e7eb; --shadow: 0 1px 3px rgba(0,0,0,0.06); --radius: 10px;
+            --icbc: #c8102e; --abc: #009a44;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: var(--bg); color: var(--text); line-height: 1.6; min-height: 100vh;
+        }
+        .container { max-width: 1100px; margin: 0 auto; padding: 16px 20px; }
+
+        .header {
+            background: linear-gradient(135deg, #0f1d35 0%, #1a365d 40%, #2563eb 100%);
+            color: #fff; padding: 20px 0; margin-bottom: 20px; box-shadow: 0 2px 16px rgba(0,0,0,0.12);
+            position: sticky; top: 0; z-index: 100;
+        }
+        .header .container { display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 1.3rem; font-weight: 600; }
+        .header .badge { font-size: 0.78rem; background: rgba(255,255,255,0.15); padding: 4px 12px; border-radius: 20px; display: flex; align-items: center; gap: 6px; }
+        .header .dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+        .card { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; margin-bottom: 16px; }
+        .card h3 { font-size: 0.95rem; color: var(--text-secondary); margin-bottom: 12px; font-weight: 500; }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 16px; }
+        .stat-card { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; text-align: center; }
+        .stat-value { font-size: 1.4rem; font-weight: 700; }
+        .stat-label { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; }
+
+        .bank-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+        .bank-card { border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); border: 2px solid transparent; }
+        .bank-card.icbc { border-color: var(--icbc); background: #fef5f7; }
+        .bank-card.abc { border-color: var(--abc); background: #f2faf6; }
+        .bank-card.best { box-shadow: 0 0 0 3px #f59e0b, 0 4px 12px rgba(0,0,0,0.1); }
+        .bank-card .bank-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+        .bank-card .bank-logo { width: 28px; height: 28px; }
+        .bank-card .bank-name { font-size: 0.95rem; font-weight: 600; }
+        .bank-card .best-tag { font-size: 0.7rem; background: #f59e0b; color: #fff; padding: 2px 8px; border-radius: 10px; }
+        .bank-card .rate-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; border-bottom: 1px dashed rgba(0,0,0,0.06); }
+        .bank-card .rate-row:last-child { border: none; }
+        .bank-card .rate-label { font-size: 0.8rem; color: var(--text-secondary); }
+        .bank-card .rate-value { font-size: 1.15rem; font-weight: 700; }
+        .bank-card .rate-value.buy { color: var(--text-secondary); font-size: 0.9rem; }
+        .bank-card.icbc .rate-value.sell { color: var(--icbc); }
+        .bank-card.abc .rate-value.sell { color: var(--abc); }
+        .bank-card .spread { font-size: 0.7rem; color: var(--text-secondary); background: #f3f4f6; padding: 2px 8px; border-radius: 8px; }
+
+        .chart-card { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; margin-bottom: 16px; }
+        .chart-card h3 { margin-bottom: 8px; }
+        .chart-wrap { position: relative; width: 100%; height: 320px; }
+
+        .history-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .history-table th { background: #f9fafb; padding: 10px 12px; text-align: left; font-weight: 600; color: var(--text-secondary); border-bottom: 2px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
+        .history-table th:hover { background: #f0f2f5; }
+        .history-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+        .history-table .sell-icbc { color: var(--icbc); font-weight: 600; }
+        .history-table .sell-abc { color: var(--abc); font-weight: 600; }
+        .history-table .bank-icbc { color: var(--icbc); }
+        .history-table .bank-abc { color: var(--abc); }
+        tr:hover td { background: #f9fafb; }
+
+        .empty-state { text-align: center; padding: 40px; color: var(--text-secondary); }
+        .empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
+
+        .footer { text-align: center; padding: 24px; color: var(--text-secondary); font-size: 0.78rem; }
+
+        @media (max-width: 700px) {
+            .bank-cards { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: repeat(3,1fr); gap: 8px; }
+            .stat-value { font-size: 1.1rem; }
+            .header h1 { font-size: 1.1rem; }
+            .chart-wrap { height: 240px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <h1>💱 美元汇率实时比对</h1>
+            <div class="badge"><span class="dot"></span><span id="updateLabel">自动更新中</span></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- 统计 -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="statRecords">--</div>
+                <div class="stat-label">24h 采集次数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statICBCSell">--</div>
+                <div class="stat-label">工行最新卖出价</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statABCSell">--</div>
+                <div class="stat-label">农行最新卖出价</div>
+            </div>
+        </div>
+
+        <!-- 银行对比卡片 -->
+        <div class="bank-cards" id="bankCards">
+            <div class="bank-card icbc" id="cardICBC">
+                <div class="bank-header">
+                    <svg class="bank-logo" viewBox="0 0 200 200"><circle cx="100" cy="100" r="95" fill="#c8102e"/><text x="100" y="130" text-anchor="middle" font-size="90" font-weight="bold" fill="white" font-family="serif">工</text></svg>
+                    <span class="bank-name">工商银行</span>
+                    <span class="best-tag" id="bestICBC" style="display:none">🏆 更划算</span>
+                </div>
+                <div class="rate-row"><span class="rate-label">卖出价 (换美元)</span><span class="rate-value sell" id="icbcSell">--</span></div>
+                <div class="rate-row"><span class="rate-label">买入价 (换人民币)</span><span class="rate-value buy" id="icbcBuy">--</span></div>
+                <div class="rate-row"><span class="rate-label">更新时间</span><span class="rate-label" id="icbcTime">--</span></div>
+            </div>
+            <div class="bank-card abc" id="cardABC">
+                <div class="bank-header">
+                    <svg class="bank-logo" viewBox="0 0 200 200"><circle cx="100" cy="100" r="95" fill="#009a44"/><text x="100" y="130" text-anchor="middle" font-size="90" font-weight="bold" fill="white" font-family="serif">农</text></svg>
+                    <span class="bank-name">农业银行</span>
+                    <span class="best-tag" id="bestABC" style="display:none">🏆 更划算</span>
+                </div>
+                <div class="rate-row"><span class="rate-label">卖出价 (换美元)</span><span class="rate-value sell" id="abcSell">--</span></div>
+                <div class="rate-row"><span class="rate-label">买入价 (换人民币)</span><span class="rate-value buy" id="abcBuy">--</span></div>
+                <div class="rate-row"><span class="rate-label">更新时间</span><span class="rate-label" id="abcTime">--</span></div>
+            </div>
+        </div>
+
+        <!-- 走势图 -->
+        <div class="chart-card">
+            <h3>📈 24小时汇率走势</h3>
+            <div class="chart-wrap"><canvas id="rateChart"></canvas></div>
+        </div>
+
+        <!-- 历史记录 -->
+        <div class="card">
+            <h3>📋 历史记录 <span id="historyCount" style="font-weight:400;font-size:0.8rem;color:var(--text-secondary)">(--)</span></h3>
+            <div style="overflow-x:auto">
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th onclick="sortHistory('fetched_at')">时间 ▾</th>
+                            <th>银行</th>
+                            <th onclick="sortHistory('selling_rate')">卖出价 ▾</th>
+                            <th onclick="sortHistory('buying_rate')">买入价 ▾</th>
+                            <th>价差</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyBody"><tr><td colspan="5" class="empty-state"><div class="icon">📡</div>加载中...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="footer">
+            数据来源 cnyrate.com · GitHub Actions 自动采集 · 每 5 分钟更新 · 北京时间
+            <br><span id="lastFetch" style="opacity:0.7"></span>
+        </div>
+    </div>
+
+<script>
+// ═══════════ 状态 ═══════════
+let currentRates = [];
+let historyData = [];
+let rateChart = null;
+let histSortField = 'fetched_at';
+let histSortDir = 'desc';
+
+const BANK_LABELS = { 'ICBC': '工商银行', 'ABC': '农业银行' };
+
+// ═══════════ 数据加载 ═══════════
+async function loadData() {
+    try {
+        const [latestRes, histRes] = await Promise.all([
+            fetch('data/latest.json?_=' + Date.now()),
+            fetch('data/history.json?_=' + Date.now())
+        ]);
+        if (latestRes.ok) currentRates = await latestRes.json();
+        if (histRes.ok) historyData = await histRes.json();
+    } catch(e) {
+        console.warn('数据加载失败:', e);
+    }
+    renderAll();
+}
+
+// ═══════════ 渲染 ═══════════
+function renderAll() {
+    renderBankCards();
+    renderStats();
+    renderChart();
+    renderHistory();
+    document.getElementById('lastFetch').textContent = '数据刷新: ' + new Date().toLocaleTimeString('zh-CN', {timeZone:'Asia/Shanghai', hour12:false});
+}
+
+function renderBankCards() {
+    const icbc = currentRates.find(r => r.bank_name === 'ICBC');
+    const abc = currentRates.find(r => r.bank_name === 'ABC');
+
+    if (icbc) {
+        document.getElementById('icbcSell').textContent = '¥' + icbc.selling_rate.toFixed(2) + ' /100$';
+        document.getElementById('icbcBuy').textContent = '¥' + icbc.buying_rate.toFixed(2);
+        document.getElementById('icbcTime').textContent = icbc.fetched_at || '--';
+    }
+    if (abc) {
+        document.getElementById('abcSell').textContent = '¥' + abc.selling_rate.toFixed(2) + ' /100$';
+        document.getElementById('abcBuy').textContent = '¥' + abc.buying_rate.toFixed(2);
+        document.getElementById('abcTime').textContent = abc.fetched_at || '--';
+    }
+
+    // 最佳银行
+    document.getElementById('cardICBC').classList.remove('best');
+    document.getElementById('cardABC').classList.remove('best');
+    document.getElementById('bestICBC').style.display = 'none';
+    document.getElementById('bestABC').style.display = 'none';
+
+    if (icbc && abc) {
+        if (icbc.selling_rate < abc.selling_rate) {
+            document.getElementById('cardICBC').classList.add('best');
+            document.getElementById('bestICBC').style.display = '';
+        } else {
+            document.getElementById('cardABC').classList.add('best');
+            document.getElementById('bestABC').style.display = '';
+        }
+    }
+}
+
+function renderStats() {
+    document.getElementById('statRecords').textContent = historyData.length;
+    const icbc = currentRates.find(r => r.bank_name === 'ICBC');
+    const abc = currentRates.find(r => r.bank_name === 'ABC');
+    document.getElementById('statICBCSell').textContent = icbc ? '¥' + icbc.selling_rate.toFixed(2) : '--';
+    document.getElementById('statABCSell').textContent = abc ? '¥' + abc.selling_rate.toFixed(2) : '--';
+}
+
+function renderChart() {
+    if (historyData.length === 0) return;
+
+    // 按时间分组（一次采集产生 ICBC+ABC 两条，按 fetched_at 对齐）
+    const times = [...new Set(historyData.map(r => r.fetched_at))].sort();
+    const labels = times.map(t => t.substring(11, 16)); // HH:MM
+    const icbcByTime = {}, abcByTime = {};
+    historyData.forEach(r => {
+        if (r.bank_name === 'ICBC') icbcByTime[r.fetched_at] = r;
+        else abcByTime[r.fetched_at] = r;
+    });
+
+    const icbcSell = times.map(t => icbcByTime[t]?.selling_rate ?? null);
+    const icbcBuy = times.map(t => icbcByTime[t]?.buying_rate ?? null);
+    const abcSell = times.map(t => abcByTime[t]?.selling_rate ?? null);
+    const abcBuy = times.map(t => abcByTime[t]?.buying_rate ?? null);
+
+    if (!rateChart) {
+        const ctx = document.getElementById('rateChart').getContext('2d');
+        rateChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    { label:'工行·卖出', data:icbcSell, borderColor:'#c8102e', backgroundColor:'rgba(200,16,46,0.05)', tension:0.3, pointRadius:0, borderWidth:2, spanGaps:true },
+                    { label:'工行·买入', data:icbcBuy, borderColor:'#c8102e', backgroundColor:'transparent', tension:0.3, pointRadius:0, borderWidth:1.5, borderDash:[5,5], spanGaps:true },
+                    { label:'农行·卖出', data:abcSell, borderColor:'#009a44', backgroundColor:'rgba(0,154,68,0.05)', tension:0.3, pointRadius:0, borderWidth:2, spanGaps:true },
+                    { label:'农行·买入', data:abcBuy, borderColor:'#009a44', backgroundColor:'transparent', tension:0.3, pointRadius:0, borderWidth:1.5, borderDash:[5,5], spanGaps:true },
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode:'index', intersect:false },
+                plugins: { legend: { position:'bottom', labels:{usePointStyle:true,boxWidth:20,padding:20}} },
+                scales: {
+                    x: { ticks:{maxTicksLimit:20}, grid:{display:false} },
+                    y: { title:{display:true,text:'¥/100USD'}, ticks:{callback:v=>v.toFixed(2)} }
+                }
+            }
+        });
+    } else {
+        rateChart.data.labels = labels;
+        rateChart.data.datasets[0].data = icbcSell;
+        rateChart.data.datasets[1].data = icbcBuy;
+        rateChart.data.datasets[2].data = abcSell;
+        rateChart.data.datasets[3].data = abcBuy;
+        rateChart.update('none');
+    }
+}
+
+function sortHistory(field) {
+    if (histSortField === field) histSortDir = histSortDir === 'asc' ? 'desc' : 'asc';
+    else { histSortField = field; histSortDir = 'asc'; }
+    renderHistory();
+}
+
+function renderHistory() {
+    const sorted = [...historyData].sort((a,b) => {
+        const va = a[histSortField] ?? '', vb = b[histSortField] ?? '';
+        return histSortDir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
+    });
+
+    const tbody = document.getElementById('historyBody');
+    document.getElementById('historyCount').textContent = '(' + sorted.length + ' 条)';
+
+    if (sorted.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><div class="icon">📭</div>暂无数据，等待首次采集...</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = sorted.map(r => {
+        const isICBC = r.bank_name === 'ICBC';
+        const sellClass = isICBC ? 'sell-icbc' : 'sell-abc';
+        const bankClass = isICBC ? 'bank-icbc' : 'bank-abc';
+        const spread = (r.selling_rate - r.buying_rate).toFixed(3);
+        return `<tr>
+            <td>${r.fetched_at || '--'}</td>
+            <td class="${bankClass}">${BANK_LABELS[r.bank_name] || r.bank_name}</td>
+            <td class="${sellClass}">¥${r.selling_rate.toFixed(3)}</td>
+            <td style="color:var(--text-secondary)">¥${r.buying_rate.toFixed(3)}</td>
+            <td style="color:#d97706">¥${spread}</td>
+        </tr>`;
+    }).join('');
+}
+
+// ═══════════ 初始化 ═══════════
+document.addEventListener('DOMContentLoaded', () => {
+    loadData();
+    setInterval(loadData, 30000);
+});
+</script>
+</body>
+</html>
