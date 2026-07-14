@@ -30,6 +30,17 @@ jobs:
       - name: 运行采集脚本
         run: python cloud_collector.py
 
+      - name: 更新年度外汇日线数据 (每日一次, ~08:05)
+        run: |
+          BEIJING_HOUR=$(TZ='Asia/Shanghai' date +%H)
+          BEIJING_MIN=$(TZ='Asia/Shanghai' date +%M)
+          if [ "$BEIJING_HOUR" = "08" ] && [ "$BEIJING_MIN" -lt "15" ]; then
+            echo "🔄 每日首次运行，刷新 fx_daily.json..."
+            python update_fx_daily.py
+          else
+            echo "⏭️  非每日首次，跳过 fx 数据更新 (当前: ${BEIJING_HOUR}:${BEIJING_MIN})"
+          fi
+
       - name: 提交数据更新
         run: |
           git config user.name "汇率机器人"

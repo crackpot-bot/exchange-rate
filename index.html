@@ -71,6 +71,25 @@
         .chart-wrap { position: relative; width: 100%; height: 340px; }
         .chart-status { font-size: 0.75rem; color: var(--text-secondary); margin-top: 6px; text-align: right; }
 
+        /* ─── 年度波动分析 ─── */
+        .annual-chart-wrap { position: relative; width: 100%; height: 380px; }
+
+        .year-selector { display: flex; gap: 4px; }
+        .year-btn {
+            padding: 4px 14px; font-size: 0.8rem; border: 1.5px solid var(--border);
+            background: #fff; color: var(--text-secondary); border-radius: 20px; cursor: pointer;
+            transition: all 0.15s; font-weight: 500;
+        }
+        .year-btn:hover { border-color: #d97706; color: #d97706; }
+        .year-btn.active { background: #d97706; color: #fff; border-color: #d97706; }
+
+        .annual-stats-row { display: grid; grid-template-columns: repeat(5,1fr); gap: 10px; margin-top: 14px; }
+        .annual-stat-item { text-align: center; padding: 8px; background: #f9fafb; border-radius: 8px; }
+        .annual-stat-val { font-size: 1.1rem; font-weight: 700; }
+        .annual-stat-val.down { color: #059669; }
+        .annual-stat-val.up { color: #c8102e; }
+        .annual-stat-label { font-size: 0.7rem; color: var(--text-secondary); margin-top: 2px; }
+
         .history-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
         .history-table th { background: #f9fafb; padding: 10px 12px; text-align: left; font-weight: 600; color: var(--text-secondary); border-bottom: 2px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
         .history-table th:hover { background: #f0f2f5; }
@@ -93,6 +112,8 @@
             .header h1 { font-size: 1.1rem; }
             .chart-wrap { height: 260px; }
             .range-btn { padding: 3px 8px; font-size: 0.72rem; }
+            .annual-chart-wrap { height: 280px; }
+            .annual-stats-row { grid-template-columns: repeat(3,1fr); }
         }
     </style>
 </head>
@@ -159,6 +180,20 @@
             </div>
             <div class="chart-wrap"><canvas id="rateChart"></canvas></div>
             <div class="chart-status" id="chartStatus"></div>
+        </div>
+
+        <!-- ═══════════ 年度波动分析 ═══════════ -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3>📅 年度波动分析 · 美元人民币</h3>
+                <div class="year-selector">
+                    <button class="year-btn active" data-year="all">全部 (2025-2026)</button>
+                    <button class="year-btn" data-year="2025">2025年</button>
+                    <button class="year-btn" data-year="2026">2026年至今</button>
+                </div>
+            </div>
+            <div class="annual-chart-wrap"><canvas id="annualChart"></canvas></div>
+            <div class="annual-stats-row" id="annualStats"></div>
         </div>
 
         <!-- 历史记录 -->
@@ -264,6 +299,10 @@ function downsample(times, datasets, maxPoints) {
 }
 
 // ═══════════ 数据加载 ═══════════
+let fxDailyData = [];          // 外汇日线数据
+let annualChart = null;
+let currentYear = 'all';
+
 async function loadData() {
     try {
         const [latestRes, histRes] = await Promise.all([
@@ -276,6 +315,16 @@ async function loadData() {
         console.warn('数据加载失败:', e);
     }
     renderAll();
+}
+
+async function loadAnnualData() {
+    try {
+        const res = await fetch('data/fx_daily.json?_=' + Date.now());
+        if (res.ok) fxDailyData = await res.json();
+    } catch(e) {
+        console.warn('年度数据加载失败:', e);
+    }
+    renderAnnualChart();
 }
 
 // ═══════════ 渲染 ═══════════
@@ -437,7 +486,159 @@ function renderHistory() {
     }).join('');
 }
 
-// ═══════════ 时间范围切换 ═══════════
+// ═══════════ 年度波动折线图 ═══════════
+function renderAnnualChart() {
+    if (fxDailyData.length === 0) return;
+
+    // 按年份过滤（已按日期降序存储，反转后升序）
+    let data = [...fxDailyData].reverse(); // 升序排列
+    if (currentYear === '2025') data = data.filter(d => d.date.startsWith('2025'));
+    else if (currentYear === '2026') data = data.filter(d => d.date.startsWith('2026'));
+
+    if (data.length === 0) return;
+
+    const labels = data.map(d => d.date.substring(5)); // MM-DD 格式
+    const closePrices = data.map(d => d.last);
+    const highPrices = data.map(d => d.high);
+    const lowPrices = data.map(d => d.low);
+    const ranges = data.map(d => +(d.high - d.low).toFixed(4));
+
+    // 计算统计
+    const firstClose = closePrices[0], lastClose = closePrices[closePrices.length - 1];
+    const totalChange = lastClose - firstClose;
+    const avgRange = ranges.length ? +(ranges.reduce((a,b)=>a+b,0)/ranges.length).toFixed(4) : 0;
+    const maxRange = ranges.length ? Math.max(...ranges) : 0;
+    const minRange = ranges.length ? Math.min(...ranges) : 0;
+
+    // 更新统计卡片
+    document.getElementById('annualStats').innerHTML = `
+        <div class="annual-stat-item">
+            <div class="annual-stat-val">${firstClose.toFixed(4)}</div>
+            <div class="annual-stat-label">期初收盘价</div>
+        </div>
+        <div class="annual-stat-item">
+            <div class="annual-stat-val">${lastClose.toFixed(4)}</div>
+            <div class="annual-stat-label">最新收盘价</div>
+        </div>
+        <div class="annual-stat-item">
+            <div class="annual-stat-val ${totalChange < 0 ? 'down' : 'up'}">${totalChange < 0 ? '↓' : '↑'} ${Math.abs(totalChange).toFixed(4)}</div>
+            <div class="annual-stat-label">累计变动 (人民币${totalChange < 0 ? '升值' : '贬值'})</div>
+        </div>
+        <div class="annual-stat-item">
+            <div class="annual-stat-val">${avgRange.toFixed(4)}</div>
+            <div class="annual-stat-label">日均波动 (最高-最低)</div>
+        </div>
+        <div class="annual-stat-item">
+            <div class="annual-stat-val">${maxRange.toFixed(4)}</div>
+            <div class="annual-stat-label">最大单日波动</div>
+        </div>
+    `;
+
+    // 渲染图表
+    if (!annualChart) {
+        const ctx = document.getElementById('annualChart').getContext('2d');
+        annualChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: '最高价',
+                        data: highPrices,
+                        borderColor: 'rgba(37, 99, 235, 0.3)',
+                        backgroundColor: 'transparent',
+                        borderWidth: 0.5,
+                        pointRadius: 0,
+                        fill: false,
+                        order: 3,
+                    },
+                    {
+                        label: '最低价',
+                        data: lowPrices,
+                        borderColor: 'rgba(37, 99, 235, 0.3)',
+                        backgroundColor: 'rgba(37, 99, 235, 0.08)',
+                        borderWidth: 0.5,
+                        pointRadius: 0,
+                        fill: '-1',  // fill to dataset index -1 (the high line above)
+                        order: 3,
+                    },
+                    {
+                        label: '收盘价',
+                        data: closePrices,
+                        borderColor: '#d97706',
+                        backgroundColor: 'transparent',
+                        borderWidth: 2,
+                        tension: 0.1,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        pointHoverBackgroundColor: '#d97706',
+                        order: 1,
+                    },
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            usePointStyle: true,
+                            boxWidth: 20,
+                            padding: 20,
+                            filter: item => item.datasetIndex === 2  // 只显示收盘价图例
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: items => data[items[0]?.dataIndex]?.date || '',
+                            label: ctx => {
+                                if (ctx.datasetIndex === 0) return '最高: ' + ctx.raw.toFixed(4);
+                                if (ctx.datasetIndex === 1) return '最低: ' + ctx.raw.toFixed(4);
+                                if (ctx.datasetIndex === 2) return '收盘: ' + ctx.raw.toFixed(4);
+                                return '';
+                            },
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            maxTicksLimit: 18,
+                            callback: function(val, index) {
+                                const label = this.getLabelForValue(val);
+                                const step = Math.max(1, Math.ceil(labels.length / 14));
+                                return index % step === 0 ? label : '';
+                            }
+                        },
+                        grid: { display: false }
+                    },
+                    y: {
+                        title: { display: true, text: '¥/1USD' },
+                        ticks: { callback: v => v.toFixed(2) },
+                    }
+                }
+            }
+        });
+    } else {
+        annualChart.data.labels = labels;
+        annualChart.data.datasets[0].data = highPrices;
+        annualChart.data.datasets[1].data = lowPrices;
+        annualChart.data.datasets[2].data = closePrices;
+        annualChart.update('none');
+    }
+}
+
+// ═══════════ 年份选择器 ═══════════
+document.querySelectorAll('.year-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.year-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentYear = btn.dataset.year;
+        renderAnnualChart();
+    });
+});
 document.querySelectorAll('.range-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
@@ -451,7 +652,10 @@ document.querySelectorAll('.range-btn').forEach(btn => {
 // ═══════════ 初始化 ═══════════
 document.addEventListener('DOMContentLoaded', () => {
     loadData();
+    loadAnnualData();
     setInterval(loadData, 30000);
+    // 年度数据不频繁刷新，每小时更新一次即可
+    setInterval(loadAnnualData, 3600000);
 });
 </script>
 </body>
