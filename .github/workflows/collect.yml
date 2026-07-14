@@ -3,6 +3,7 @@ name: 采集汇率数据
 on:
   schedule:
     # 每30分钟作为备用触发（GitHub 对 */5 限流严重）
+    # 08:00 的 cron 会恢复暂停后的自链条
     - cron: '0,30 * * * *'
   workflow_dispatch:  # 允许手动触发和自链触发
 
@@ -39,10 +40,15 @@ jobs:
             git push
           )
 
-      - name: 等待4分钟后触发下一次（自链）
+      - name: 智能自链触发
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          BEIJING_HOUR=$(TZ='Asia/Shanghai' date +%H)
+          if [ "$BEIJING_HOUR" -ge 0 ] && [ "$BEIJING_HOUR" -lt 8 ]; then
+            echo "⏸️  北京时间 $BEIJING_HOUR 点，暂停期间不自链，等待 08:00 cron 恢复"
+            exit 0
+          fi
           echo "⏳ 等待240秒，使总间隔约5分钟..."
           sleep 240
           echo "🚀 触发下一次采集..."

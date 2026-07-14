@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>💱 美元汇率 24h 实时比对 · 工商银行 vs 农业银行</title>
+    <title>💱 美元汇率实时比对 · 工商银行 vs 农业银行</title>
     <script src="static/chart.umd.min.js"></script>
     <style>
         :root {
@@ -56,8 +56,20 @@
         .bank-card .spread { font-size: 0.7rem; color: var(--text-secondary); background: #f3f4f6; padding: 2px 8px; border-radius: 8px; }
 
         .chart-card { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; margin-bottom: 16px; }
-        .chart-card h3 { margin-bottom: 8px; }
-        .chart-wrap { position: relative; width: 100%; height: 320px; }
+        .chart-card .chart-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        .chart-card .chart-header h3 { margin: 0; }
+
+        /* ─── 时间范围选择器 ─── */
+        .range-selector { display: flex; gap: 4px; flex-wrap: wrap; }
+        .range-btn {
+            padding: 4px 12px; font-size: 0.78rem; border: 1px solid var(--border);
+            background: #fff; color: var(--text-secondary); border-radius: 20px; cursor: pointer;
+            transition: all 0.15s; white-space: nowrap;
+        }
+        .range-btn:hover { border-color: #2563eb; color: #2563eb; }
+        .range-btn.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+        .chart-wrap { position: relative; width: 100%; height: 340px; }
+        .chart-status { font-size: 0.75rem; color: var(--text-secondary); margin-top: 6px; text-align: right; }
 
         .history-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
         .history-table th { background: #f9fafb; padding: 10px 12px; text-align: left; font-weight: 600; color: var(--text-secondary); border-bottom: 2px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
@@ -79,7 +91,8 @@
             .stats-grid { grid-template-columns: repeat(3,1fr); gap: 8px; }
             .stat-value { font-size: 1.1rem; }
             .header h1 { font-size: 1.1rem; }
-            .chart-wrap { height: 240px; }
+            .chart-wrap { height: 260px; }
+            .range-btn { padding: 3px 8px; font-size: 0.72rem; }
         }
     </style>
 </head>
@@ -96,7 +109,7 @@
         <div class="stats-grid">
             <div class="stat-card">
                 <div class="stat-value" id="statRecords">--</div>
-                <div class="stat-label">24h 采集次数</div>
+                <div class="stat-label">采集次数</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="statICBCSell">--</div>
@@ -134,8 +147,18 @@
 
         <!-- 走势图 -->
         <div class="chart-card">
-            <h3>📈 24小时汇率走势</h3>
+            <div class="chart-header">
+                <h3 id="chartTitle">📈 汇率走势 · 近24小时</h3>
+                <div class="range-selector">
+                    <button class="range-btn active" data-range="24h" data-label="近24小时">24小时</button>
+                    <button class="range-btn" data-range="7d" data-label="近7天">7天</button>
+                    <button class="range-btn" data-range="30d" data-label="近30天">1月</button>
+                    <button class="range-btn" data-range="90d" data-label="近1季度">1季度</button>
+                    <button class="range-btn" data-range="365d" data-label="近1年">1年</button>
+                </div>
+            </div>
             <div class="chart-wrap"><canvas id="rateChart"></canvas></div>
+            <div class="chart-status" id="chartStatus"></div>
         </div>
 
         <!-- 历史记录 -->
@@ -158,7 +181,7 @@
         </div>
 
         <div class="footer">
-            数据来源 cnyrate.com · GitHub Actions 自动采集 · 每 5 分钟更新 · 北京时间
+            数据来源 cnyrate.com · GitHub Actions 自动采集 · 08:00-24:00 每5分钟更新 · 北京时间
             <br><span id="lastFetch" style="opacity:0.7"></span>
         </div>
     </div>
@@ -166,12 +189,79 @@
 <script>
 // ═══════════ 状态 ═══════════
 let currentRates = [];
-let historyData = [];
+let historyData = [];        // 全量历史（前端缓存）
 let rateChart = null;
 let histSortField = 'fetched_at';
 let histSortDir = 'desc';
+let currentRange = '24h';
 
 const BANK_LABELS = { 'ICBC': '工商银行', 'ABC': '农业银行' };
+
+// 时间范围配置
+const RANGE_CONFIG = {
+    '24h':  { ms: 1  * 24 * 3600 * 1000, label: '近24小时', maxPoints: 300,  fmt: t => t.substring(11,16) },
+    '7d':   { ms: 7  * 24 * 3600 * 1000, label: '近7天',   maxPoints: 200,  fmt: t => t.substring(5,16) },
+    '30d':  { ms: 30 * 24 * 3600 * 1000, label: '近30天',  maxPoints: 250,  fmt: t => t.substring(5,10) },
+    '90d':  { ms: 90 * 24 * 3600 * 1000, label: '近1季度',  maxPoints: 250,  fmt: t => t.substring(5,10) },
+    '365d': { ms: 365* 24 * 3600 * 1000, label: '近1年',   maxPoints: 365,  fmt: t => t.substring(0,7) },
+};
+
+// ═══════════ 时间范围过滤 ═══════════
+function getBeijingNowStr() {
+    // 返回北京时间的 "YYYY-MM-DD HH:MM:SS" 字符串
+    const now = new Date();
+    const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+    const beijing = new Date(utc + 8 * 3600 * 1000);
+    return beijing.getFullYear() + '-' +
+           String(beijing.getMonth() + 1).padStart(2,'0') + '-' +
+           String(beijing.getDate()).padStart(2,'0') + ' ' +
+           String(beijing.getHours()).padStart(2,'0') + ':' +
+           String(beijing.getMinutes()).padStart(2,'0') + ':' +
+           String(beijing.getSeconds()).padStart(2,'0');
+}
+
+function filterByRange(range) {
+    const cfg = RANGE_CONFIG[range];
+    if (!cfg) return [];
+
+    // 计算截止时间字符串（北京时间）
+    const now = new Date();
+    const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+    const beijingNow = new Date(utc + 8 * 3600 * 1000);
+    const cutoff = new Date(beijingNow.getTime() - cfg.ms);
+    const cutoffStr = cutoff.getFullYear() + '-' +
+                      String(cutoff.getMonth() + 1).padStart(2,'0') + '-' +
+                      String(cutoff.getDate()).padStart(2,'0') + ' ' +
+                      String(cutoff.getHours()).padStart(2,'0') + ':' +
+                      String(cutoff.getMinutes()).padStart(2,'0') + ':' +
+                      String(cutoff.getSeconds()).padStart(2,'0');
+
+    return historyData.filter(r => (r.fetched_at || '') >= cutoffStr);
+}
+
+// ═══════════ 降采样 ═══════════
+function downsample(times, datasets, maxPoints) {
+    if (times.length <= maxPoints) return { times, datasets };
+
+    const step = Math.ceil(times.length / maxPoints);
+    const newTimes = [];
+    const newDatasets = datasets.map(ds => []);
+
+    for (let i = 0; i < times.length; i += step) {
+        // 取每个区间的最后一个非null值
+        newTimes.push(times[i]);
+        for (let d = 0; d < datasets.length; d++) {
+            let val = null;
+            for (let j = i; j < Math.min(i + step, times.length); j++) {
+                if (datasets[d][j] !== null && datasets[d][j] !== undefined) {
+                    val = datasets[d][j];
+                }
+            }
+            newDatasets[d].push(val);
+        }
+    }
+    return { times: newTimes, datasets: newDatasets };
+}
 
 // ═══════════ 数据加载 ═══════════
 async function loadData() {
@@ -212,7 +302,6 @@ function renderBankCards() {
         document.getElementById('abcTime').textContent = abc.fetched_at || '--';
     }
 
-    // 最佳银行
     document.getElementById('cardICBC').classList.remove('best');
     document.getElementById('cardABC').classList.remove('best');
     document.getElementById('bestICBC').style.display = 'none';
@@ -230,7 +319,9 @@ function renderBankCards() {
 }
 
 function renderStats() {
-    document.getElementById('statRecords').textContent = historyData.length;
+    // 统计当前选中范围内的数据量
+    const rangeData = filterByRange(currentRange);
+    document.getElementById('statRecords').textContent = Math.floor(rangeData.length / 2) || 0;
     const icbc = currentRates.find(r => r.bank_name === 'ICBC');
     const abc = currentRates.find(r => r.bank_name === 'ABC');
     document.getElementById('statICBCSell').textContent = icbc ? '¥' + icbc.selling_rate.toFixed(2) : '--';
@@ -238,21 +329,41 @@ function renderStats() {
 }
 
 function renderChart() {
-    if (historyData.length === 0) return;
+    const cfg = RANGE_CONFIG[currentRange];
+    const filtered = filterByRange(currentRange);
 
-    // 按时间分组（一次采集产生 ICBC+ABC 两条，按 fetched_at 对齐）
-    const times = [...new Set(historyData.map(r => r.fetched_at))].sort();
-    const labels = times.map(t => t.substring(11, 16)); // HH:MM
+    // 更新标题
+    document.getElementById('chartTitle').textContent = '📈 汇率走势 · ' + cfg.label;
+
+    if (filtered.length === 0) {
+        document.getElementById('chartStatus').textContent = '该时间范围内暂无数据';
+        if (rateChart) { rateChart.destroy(); rateChart = null; }
+        return;
+    }
+
+    // 按时间分组
+    const times = [...new Set(filtered.map(r => r.fetched_at))].sort();
     const icbcByTime = {}, abcByTime = {};
-    historyData.forEach(r => {
+    filtered.forEach(r => {
         if (r.bank_name === 'ICBC') icbcByTime[r.fetched_at] = r;
         else abcByTime[r.fetched_at] = r;
     });
 
-    const icbcSell = times.map(t => icbcByTime[t]?.selling_rate ?? null);
-    const icbcBuy = times.map(t => icbcByTime[t]?.buying_rate ?? null);
-    const abcSell = times.map(t => abcByTime[t]?.selling_rate ?? null);
-    const abcBuy = times.map(t => abcByTime[t]?.buying_rate ?? null);
+    let labels = times;
+    let icbcSell = times.map(t => icbcByTime[t]?.selling_rate ?? null);
+    let icbcBuy  = times.map(t => icbcByTime[t]?.buying_rate ?? null);
+    let abcSell  = times.map(t => abcByTime[t]?.selling_rate ?? null);
+    let abcBuy   = times.map(t => abcByTime[t]?.buying_rate ?? null);
+
+    // 降采样
+    const result = downsample(times, [icbcSell, icbcBuy, abcSell, abcBuy], cfg.maxPoints);
+    labels = result.times.map(cfg.fmt);
+    [icbcSell, icbcBuy, abcSell, abcBuy] = result.datasets;
+
+    // 更新状态信息
+    const pointCount = labels.length;
+    const timeSpan = times.length > 1 ? times[0].substring(0,10) + ' ~ ' + times[times.length-1].substring(0,10) : times[0]?.substring(0,10) || '';
+    document.getElementById('chartStatus').textContent = `${pointCount} 个数据点 · ${timeSpan}`;
 
     if (!rateChart) {
         const ctx = document.getElementById('rateChart').getContext('2d');
@@ -272,7 +383,7 @@ function renderChart() {
                 interaction: { mode:'index', intersect:false },
                 plugins: { legend: { position:'bottom', labels:{usePointStyle:true,boxWidth:20,padding:20}} },
                 scales: {
-                    x: { ticks:{maxTicksLimit:20}, grid:{display:false} },
+                    x: { ticks:{maxTicksLimit:15}, grid:{display:false} },
                     y: { title:{display:true,text:'¥/100USD'}, ticks:{callback:v=>v.toFixed(2)} }
                 }
             }
@@ -299,28 +410,43 @@ function renderHistory() {
         return histSortDir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
     });
 
+    // 只显示最近200条，避免大量数据卡顿
+    const display = sorted.slice(0, 200);
     const tbody = document.getElementById('historyBody');
-    document.getElementById('historyCount').textContent = '(' + sorted.length + ' 条)';
+    document.getElementById('historyCount').textContent = '(' + sorted.length + ' 条' + (sorted.length > 200 ? ', 显示最近200条' : '') + ')';
 
-    if (sorted.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><div class="icon">📭</div>暂无数据，等待首次采集...</td></tr>';
+    if (display.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><div class="icon">📭</div>暂无数据，等待采集...</td></tr>';
         return;
     }
 
-    tbody.innerHTML = sorted.map(r => {
+    tbody.innerHTML = display.map(r => {
         const isICBC = r.bank_name === 'ICBC';
         const sellClass = isICBC ? 'sell-icbc' : 'sell-abc';
         const bankClass = isICBC ? 'bank-icbc' : 'bank-abc';
-        const spread = (r.selling_rate - r.buying_rate).toFixed(3);
+        const sell = typeof r.selling_rate === 'number' ? r.selling_rate : parseFloat(r.selling_rate);
+        const buy = typeof r.buying_rate === 'number' ? r.buying_rate : parseFloat(r.buying_rate);
+        const spread = (sell - buy).toFixed(3);
         return `<tr>
             <td>${r.fetched_at || '--'}</td>
             <td class="${bankClass}">${BANK_LABELS[r.bank_name] || r.bank_name}</td>
-            <td class="${sellClass}">¥${r.selling_rate.toFixed(3)}</td>
-            <td style="color:var(--text-secondary)">¥${r.buying_rate.toFixed(3)}</td>
+            <td class="${sellClass}">¥${sell.toFixed(3)}</td>
+            <td style="color:var(--text-secondary)">¥${buy.toFixed(3)}</td>
             <td style="color:#d97706">¥${spread}</td>
         </tr>`;
     }).join('');
 }
+
+// ═══════════ 时间范围切换 ═══════════
+document.querySelectorAll('.range-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentRange = btn.dataset.range;
+        renderChart();
+        renderStats();
+    });
+});
 
 // ═══════════ 初始化 ═══════════
 document.addEventListener('DOMContentLoaded', () => {
