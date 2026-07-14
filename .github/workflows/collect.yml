@@ -2,20 +2,16 @@ name: 采集汇率数据
 
 on:
   schedule:
-    # 每5分钟运行一次 (UTC时间)
-    - cron: '*/5 * * * *'
-  workflow_dispatch:  # 允许手动触发
-  push:
-    branches: [main]
-    paths:
-      - 'cloud_collector.py'
-      - '.github/workflows/collect.yml'
+    # 每30分钟作为备用触发（GitHub 对 */5 限流严重）
+    - cron: '0,30 * * * *'
+  workflow_dispatch:  # 允许手动触发和自链触发
 
 jobs:
   collect:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # 允许推送提交
+      contents: write   # 允许推送提交
+      actions: write    # 允许触发 workflow（自链）
 
     steps:
       - name: 检出代码
@@ -42,3 +38,13 @@ jobs:
             git commit -m "📊 自动采集 $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M')"
             git push
           )
+
+      - name: 等待4分钟后触发下一次（自链）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "⏳ 等待240秒，使总间隔约5分钟..."
+          sleep 240
+          echo "🚀 触发下一次采集..."
+          gh workflow run collect.yml --repo ${{ github.repository }}
+          echo "✅ 已触发，当前运行结束"
