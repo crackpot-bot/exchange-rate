@@ -194,11 +194,16 @@
             </div>
             <div class="annual-chart-wrap"><canvas id="annualChart"></canvas></div>
             <div class="annual-stats-row" id="annualStats"></div>
+            <div style="text-align:right; font-size:0.72rem; color:var(--text-secondary); margin-top:8px; padding-right:4px;">
+                数据来源：<a href="https://www.investing.com/currencies/usd-cnh-historical-data" target="_blank" style="color:#2563eb; text-decoration:none;">Investing.com · USD/CNH 离岸人民币</a>
+            </div>
         </div>
 
         <!-- 历史记录 -->
         <div class="card">
-            <h3>📋 历史记录 <span id="historyCount" style="font-weight:400;font-size:0.8rem;color:var(--text-secondary)">(--)</span></h3>
+            <h3>📋 历史记录 <span id="historyCount" style="font-weight:400;font-size:0.8rem;color:var(--text-secondary)">(--)</span>
+                <a href="javascript:downloadHistoryExcel()" style="float:right;font-size:0.8rem;font-weight:400;color:#2563eb;text-decoration:none;">⬇ 下载 Excel</a>
+            </h3>
             <div style="overflow-x:auto">
                 <table class="history-table">
                     <thead>
@@ -216,7 +221,7 @@
         </div>
 
         <div class="footer">
-            数据来源 cnyrate.com · GitHub Actions 自动采集 · 08:00-24:00 每5分钟更新 · 北京时间
+            数据来源 cnyrate.com · GitHub Actions 自动采集 · 08:00-24:00 每10分钟更新 · 北京时间
             <br><span id="lastFetch" style="opacity:0.7"></span>
         </div>
     </div>
@@ -486,6 +491,35 @@ function renderHistory() {
     }).join('');
 }
 
+// ═══════════ 下载历史记录 Excel ═══════════
+function downloadHistoryExcel() {
+    if (historyData.length === 0) { alert('暂无数据可下载'); return; }
+
+    const sorted = [...historyData].sort((a,b) => {
+        const va = a.fetched_at ?? '', vb = b.fetched_at ?? '';
+        return va < vb ? 1 : -1;
+    });
+
+    // 生成 CSV（UTF-8 BOM + 逗号分隔）
+    const BOM = '\uFEFF';
+    let csv = BOM + '时间,银行,卖出价(¥/100$),买入价(¥/100$),价差\n';
+    sorted.forEach(r => {
+        const sell = typeof r.selling_rate === 'number' ? r.selling_rate.toFixed(3) : r.selling_rate;
+        const buy  = typeof r.buying_rate  === 'number' ? r.buying_rate.toFixed(3)  : r.buying_rate;
+        const spread = (parseFloat(sell) - parseFloat(buy)).toFixed(3);
+        const bank = BANK_LABELS[r.bank_name] || r.bank_name;
+        csv += `${r.fetched_at || ''},${bank},${sell},${buy},${spread}\n`;
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `汇率历史记录_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
 // ═══════════ 年度波动折线图 ═══════════
 function renderAnnualChart() {
     if (fxDailyData.length === 0) return;
@@ -513,24 +547,24 @@ function renderAnnualChart() {
     // 更新统计卡片
     document.getElementById('annualStats').innerHTML = `
         <div class="annual-stat-item">
-            <div class="annual-stat-val">${firstClose.toFixed(4)}</div>
-            <div class="annual-stat-label">期初收盘价</div>
+            <div class="annual-stat-val">${firstClose.toFixed(2)}</div>
+            <div class="annual-stat-label">期初收盘价 (bp)</div>
         </div>
         <div class="annual-stat-item">
-            <div class="annual-stat-val">${lastClose.toFixed(4)}</div>
-            <div class="annual-stat-label">最新收盘价</div>
+            <div class="annual-stat-val">${lastClose.toFixed(2)}</div>
+            <div class="annual-stat-label">最新收盘价 (bp)</div>
         </div>
         <div class="annual-stat-item">
-            <div class="annual-stat-val ${totalChange < 0 ? 'down' : 'up'}">${totalChange < 0 ? '↓' : '↑'} ${Math.abs(totalChange).toFixed(4)}</div>
+            <div class="annual-stat-val ${totalChange < 0 ? 'down' : 'up'}">${totalChange < 0 ? '↓' : '↑'} ${Math.abs(totalChange).toFixed(2)}</div>
             <div class="annual-stat-label">累计变动 (人民币${totalChange < 0 ? '升值' : '贬值'})</div>
         </div>
         <div class="annual-stat-item">
-            <div class="annual-stat-val">${avgRange.toFixed(4)}</div>
-            <div class="annual-stat-label">日均波动 (最高-最低)</div>
+            <div class="annual-stat-val">${avgRange.toFixed(2)}</div>
+            <div class="annual-stat-label">日均波动 (bp)</div>
         </div>
         <div class="annual-stat-item">
-            <div class="annual-stat-val">${maxRange.toFixed(4)}</div>
-            <div class="annual-stat-label">最大单日波动</div>
+            <div class="annual-stat-val">${maxRange.toFixed(2)}</div>
+            <div class="annual-stat-label">最大单日波动 (bp)</div>
         </div>
     `;
 
@@ -594,9 +628,9 @@ function renderAnnualChart() {
                         callbacks: {
                             title: items => data[items[0]?.dataIndex]?.date || '',
                             label: ctx => {
-                                if (ctx.datasetIndex === 0) return '最高: ' + ctx.raw.toFixed(4);
-                                if (ctx.datasetIndex === 1) return '最低: ' + ctx.raw.toFixed(4);
-                                if (ctx.datasetIndex === 2) return '收盘: ' + ctx.raw.toFixed(4);
+                                if (ctx.datasetIndex === 0) return '最高: ' + ctx.raw.toFixed(2) + ' bp';
+                                if (ctx.datasetIndex === 1) return '最低: ' + ctx.raw.toFixed(2) + ' bp';
+                                if (ctx.datasetIndex === 2) return '收盘: ' + ctx.raw.toFixed(2) + ' bp';
                                 return '';
                             },
                         }
@@ -615,7 +649,7 @@ function renderAnnualChart() {
                         grid: { display: false }
                     },
                     y: {
-                        title: { display: true, text: '¥/1USD' },
+                        title: { display: true, text: '基点 (bp)' },
                         ticks: { callback: v => v.toFixed(2) },
                     }
                 }

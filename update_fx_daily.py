@@ -1,8 +1,9 @@
 """
-每日更新 USD/CNY 日线数据
-- 读取 data/fx_daily.json（按日期降序存储）
+每日更新 USD/CNY 日线数据（bp 格式）
+- 读取 data/fx_daily.json（按日期降序存储，数值单位为 bp）
 - 从外部 API 获取今日收盘价
-- 如果今天的数据不存在则追加
+- 自动 ×100 转换为 bp 后追加
+- 如果今天的数据已存在则跳过，不覆盖历史数据
 """
 import json, os, sys
 from datetime import datetime, timezone, timedelta
@@ -62,10 +63,9 @@ def main():
 
     print(f"现有数据: {len(data)} 条, 最新: {data[0]['date']}")
 
-    # 检查今天是否已有数据
+    # 检查今天是否已有数据 —— 增量更新核心：存在则跳过，不覆盖
     if data and data[0]['date'] == today_str:
-        print(f"今天 ({today_str}) 已有数据，跳过更新")
-        # 检查是否需要补充 open/high/low（只有 close 的情况）
+        print(f"今天 ({today_str}) 已有数据，跳过更新（保持历史数据不变）")
         return
 
     # 获取今日汇率
@@ -74,15 +74,17 @@ def main():
         print("无法获取今日汇率，跳过更新")
         return
 
-    print(f"获取到今日汇率: {rate}")
+    # 转换为 bp（×100），保留两位小数
+    bp_rate = round(rate * 100, 2)
+    print(f"获取到今日汇率: {rate} (原始) -> {bp_rate} bp")
 
     # 追加新数据（今天的 OHLC 都用收盘价近似，因为免费 API 没有 OHLC）
     today_entry = {
         'date': today_str,
-        'open': rate,
-        'high': rate,
-        'low': rate,
-        'last': rate
+        'open': bp_rate,
+        'high': bp_rate,
+        'low': bp_rate,
+        'last': bp_rate
     }
 
     data.insert(0, today_entry)  # 降序排列，最新在前
@@ -93,7 +95,7 @@ def main():
     with open(DATA_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False)
 
-    print(f"✅ 已更新: {today_str} = {rate}, 总 {len(data)} 条")
+    print(f"✅ 已增量更新: {today_str} = {bp_rate} bp, 总 {len(data)} 条")
 
 
 if __name__ == '__main__':
