@@ -3,9 +3,10 @@ name: 采集汇率数据
 on:
   schedule:
     # 以下均为 UTC 时间，+8 = 北京时间
-    # 自链全天不间断，cron 仅作为备用恢复（GitHub cron 不可靠，不能依赖）
-    - cron: '0 0 * * *'     # 北京 08:00 — 备用恢复 + 每日日线刷新
-    - cron: '0 2 * * *'     # 北京 10:00 — 备用恢复
+    - cron: '20 1 * * *'    # 北京 09:20 — 主启动
+    - cron: '50 2 * * *'    # 北京 10:50 — 备用启动1
+    - cron: '0 4 * * *'     # 北京 12:00 — 备用启动2
+    - cron: '0 6 * * *'     # 北京 14:00 — 备用启动3
   workflow_dispatch:  # 手动触发
 
 concurrency:
@@ -33,11 +34,11 @@ jobs:
       - name: 运行采集脚本
         run: python cloud_collector.py
 
-      - name: 更新年度外汇日线数据 (每日首次, ~08:05)
+      - name: 更新年度外汇日线数据 (每日首次, ~09:20)
         run: |
           BEIJING_HOUR=$(TZ='Asia/Shanghai' date +%H)
           BEIJING_MIN=$(TZ='Asia/Shanghai' date +%M)
-          if [ "$BEIJING_HOUR" = "08" ] && [ "$BEIJING_MIN" -lt "15" ]; then
+          if [ "$BEIJING_HOUR" = "09" ] && [ "$BEIJING_MIN" -lt "35" ]; then
             echo "🔄 每日首次运行，刷新 fx_daily.json..."
             python update_fx_daily.py
           else
@@ -54,23 +55,27 @@ jobs:
             git push
           )
 
-      - name: 自链触发下一轮（全天不间断，永不断裂）
+      - name: 自链触发下一轮 (09:20-23:00)
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           BEIJING_HOUR=$(TZ='Asia/Shanghai' date +%H)
 
-          # 08:00-23:00：白天模式，间隔约10分钟
-          if [ "$BEIJING_HOUR" -ge 8 ] && [ "$BEIJING_HOUR" -lt 23 ]; then
-            echo "☀️ 白天模式，等待570秒，使总间隔约10分钟..."
-            sleep 570
-          else
-            # 23:00-08:00：夜间守护模式，间隔1小时
-            # 采集脚本会自动跳过非采集时段（不访问银行），仅保持自链不断
-            echo "🌙 夜间守护模式，等待3600秒（1小时），保持自链不断..."
-            sleep 3600
+          # 凌晨 00:00-09:00：不自链，等 cron 09:20 重新启动
+          if [ "$BEIJING_HOUR" -ge 0 ] && [ "$BEIJING_HOUR" -lt 9 ]; then
+            echo "⏸️  北京时间 ${BEIJING_HOUR} 点，停止自链，等待 cron 09:20 重新启动"
+            exit 0
           fi
 
+          # 23:00-24:00：不自链，今日采集结束
+          if [ "$BEIJING_HOUR" -ge 23 ]; then
+            echo "🌙 北京时间 ${BEIJING_HOUR} 点，今日采集结束，等待明天 cron 09:20 重新启动"
+            exit 0
+          fi
+
+          # 09:00-23:00：等待后自链
+          echo "⏳ 等待570秒，使总间隔约10分钟..."
+          sleep 570
           echo "🚀 触发下一次采集..."
 
           for i in 1 2 3; do
@@ -81,4 +86,4 @@ jobs:
             echo "⚠️ 触发失败（第${i}次），60秒后重试..."
             sleep 60
           done
-          echo "❌ 3次重试均失败，链条中断，等待 cron 备用恢复"
+          echo "❌ 3次重试均失败，链条中断，等待 cron 09:20 恢复"
