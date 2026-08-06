@@ -3,4 +3,4 @@ __pycache__/
 *.pyo
 .DS_Store
 Thumbs.db
-vercel.json
+# vercel.json — 不再忽略，Vercel Cron 配置依赖此文件

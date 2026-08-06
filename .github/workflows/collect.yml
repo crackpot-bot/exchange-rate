@@ -2,12 +2,13 @@ name: 采集汇率数据
 
 on:
   schedule:
-    # 以下均为 UTC 时间，+8 = 北京时间
-    - cron: '20 1 * * *'    # 北京 09:20 — 主启动
+    # ⚠️ GitHub schedule 在公开仓库延迟严重（9-12h），以下仅为备用兜底
+    # 主触发器已迁移到 Vercel Cron (见 vercel.json 及 /api/trigger.js)
+    - cron: '20 1 * * *'    # 北京 09:20 — 主启动（Vercel 已接管，此为备用）
     - cron: '50 2 * * *'    # 北京 10:50 — 备用启动1
     - cron: '0 4 * * *'     # 北京 12:00 — 备用启动2
     - cron: '0 6 * * *'     # 北京 14:00 — 备用启动3
-  workflow_dispatch:  # 手动触发
+  workflow_dispatch:  # 手动触发 / Vercel Cron 触发
 
 concurrency:
   group: collect
