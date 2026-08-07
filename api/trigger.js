@@ -1,9 +1,10 @@
 /**
- * Vercel Cron 触发器 — 每日 09:20 CST 精准触发 GitHub Actions
+ * Vercel Cron 触发器 — 精准触发 GitHub Actions
  *
- * 背景：GitHub Actions schedule 事件在公开仓库上延迟 9-12 小时，
- * 且因 concurrency: cancel-in-progress 被自链取消，导致 cron 形同虚设。
- * Vercel Cron 不受此影响，可精准按时触发。
+ * Cron 1: 09:20 CST (01:20 UTC) — 每日首次启动，唤醒自链
+ * Cron 2: 14:00 CST (06:00 UTC) — 安全网，自链断裂时兜底恢复
+ *
+ * trigger.js 会先检查数据是否新鲜（<30分钟），新鲜则跳过，避免重复触发。
  */
 
 const GITHUB_TOKEN = process.env.GH_PAT;

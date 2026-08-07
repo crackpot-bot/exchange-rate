@@ -7,11 +7,12 @@ on:
 
 concurrency:
   group: collect
-  cancel-in-progress: true   # 防止多链并行：新触发会取消正在等待的旧 run
+  cancel-in-progress: false  # 不取消正在运行的 job，让自链验证步骤完整执行
 
 jobs:
   collect:
     runs-on: ubuntu-latest
+    timeout-minutes: 15       # 防止卡死阻塞队列
     permissions:
       contents: write
 
@@ -51,21 +52,21 @@ jobs:
             git push
           )
 
-      - name: 自链触发下一轮 (09:20-23:00)
+      - name: 自链触发下一轮 (09:00-23:00)
         env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GH_PAT: ${{ secrets.GH_PAT }}
         run: |
           BEIJING_HOUR=$(TZ='Asia/Shanghai' date +%H)
 
-          # 凌晨 00:00-09:00：不自链，等 cron 09:20 重新启动
+          # 凌晨 00:00-09:00：不自链，等 Vercel Cron 09:20 启动
           if [ "$BEIJING_HOUR" -ge 0 ] && [ "$BEIJING_HOUR" -lt 9 ]; then
-            echo "⏸️  北京时间 ${BEIJING_HOUR} 点，停止自链，等待 cron 09:20 重新启动"
+            echo "⏸️  北京时间 ${BEIJING_HOUR} 点，停止自链，等待 Vercel Cron 09:20 启动"
             exit 0
           fi
 
           # 23:00-24:00：不自链，今日采集结束
           if [ "$BEIJING_HOUR" -ge 23 ]; then
-            echo "🌙 北京时间 ${BEIJING_HOUR} 点，今日采集结束，等待明天 cron 09:20 重新启动"
+            echo "🌙 北京时间 ${BEIJING_HOUR} 点，今日采集结束"
             exit 0
           fi
 
@@ -74,12 +75,43 @@ jobs:
           sleep 570
           echo "🚀 触发下一次采集..."
 
+          CURRENT_RUN_ID="${{ github.run_id }}"
+          CHAIN_OK=false
+
           for i in 1 2 3; do
-            if gh workflow run collect.yml --repo ${{ github.repository }} 2>&1; then
-              echo "✅ 已触发下一次"
-              exit 0
+            # 用 GitHub API 直接触发 workflow_dispatch（比 gh CLI 更可靠）
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/collect.yml/dispatches" \
+              -H "Authorization: Bearer $GH_PAT" \
+              -H "Accept: application/vnd.github+json" \
+              -d '{"ref":"main"}')
+
+            if [ "$HTTP_CODE" != "204" ]; then
+              echo "⚠️ 触发失败 (HTTP $HTTP_CODE, 第${i}次)，60秒后重试..."
+              sleep 60
+              continue
             fi
-            echo "⚠️ 触发失败（第${i}次），60秒后重试..."
+            echo "📤 API 触发成功 (HTTP 204, 第${i}次)"
+
+            # 等待新 run 注册后验证
+            sleep 15
+
+            NEW_RUN_ID=$(curl -s "https://api.github.com/repos/${{ github.repository }}/actions/runs?per_page=5" \
+              -H "Authorization: Bearer $GH_PAT" \
+              -H "Accept: application/vnd.github+json" | \
+              python3 -c "import sys,json; d=json.load(sys.stdin); print(next((str(r['id']) for r in d.get('workflow_runs',[]) if str(r['id'])!='$CURRENT_RUN_ID'), ''))" 2>/dev/null)
+
+            if [ -n "$NEW_RUN_ID" ]; then
+              echo "✅ 已验证新 Run 创建 (ID: $NEW_RUN_ID)"
+              CHAIN_OK=true
+              break
+            fi
+
+            echo "⚠️ 未检测到新 Run（第${i}次），60秒后重试..."
             sleep 60
           done
-          echo "❌ 3次重试均失败，链条中断，等待 cron 09:20 恢复"
+
+          if [ "$CHAIN_OK" = false ]; then
+            echo "❌ 3次重试均失败，自链中断！等待 Vercel Cron 14:00 安全网恢复"
+            exit 1
+          fi
