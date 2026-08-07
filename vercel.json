@@ -7,14 +7,6 @@
     {
       "path": "/api/trigger",
       "schedule": "20 1 * * *"
-    },
-    {
-      "path": "/api/trigger",
-      "schedule": "50 2 * * *"
-    },
-    {
-      "path": "/api/trigger",
-      "schedule": "0 4 * * *"
     }
   ]
 }
