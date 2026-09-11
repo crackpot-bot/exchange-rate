@@ -44,13 +44,35 @@ jobs:
 
       - name: 提交数据更新
         run: |
+          # 缩短 git HTTP 超时：60秒无传输即断开，避免偶发故障时单次 push 挂10分钟
+          git config http.lowSpeedLimit 1000
+          git config http.lowSpeedTime 60
           git config user.name "汇率机器人"
           git config user.email "bot@exchange-rate.local"
           git add data/
-          git diff --cached --quiet || (
+
+          if git diff --cached --quiet; then
+            echo "⏭️  没有数据变化，跳过提交"
+          else
             git commit -m "📊 自动采集 $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M')"
-            git push
-          )
+
+            # push 重试 3 次（GitHub 偶发 504/503 网关错误会导致断链）
+            PUSH_OK=false
+            for i in 1 2 3; do
+              if git push; then
+                echo "✅ push 成功 (第${i}次)"
+                PUSH_OK=true
+                break
+              fi
+              echo "⚠️ push 失败 (第${i}次)，30秒后重试..."
+              sleep 30
+            done
+
+            if [ "$PUSH_OK" = false ]; then
+              echo "❌ 3次 push 重试均失败，链条将中断，等待安全网/Vercel Cron 恢复"
+              exit 1
+            fi
+          fi
 
       - name: 自链触发下一轮 (09:00-23:00)
         env:
