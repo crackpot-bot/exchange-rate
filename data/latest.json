@@ -7,8 +7,8 @@
     "selling_rate": 666.21,
     "cash_buying_rate": 662.75,
     "cash_selling_rate": 666.21,
-    "published_at": "2026-11-02 15:41:51",
-    "fetched_at": "2026-11-02 15:46:52"
+    "published_at": "2026-11-02 15:53:52",
+    "fetched_at": "2026-11-02 15:56:50"
   },
   {
     "bank_name": "ABC",
@@ -18,7 +18,7 @@
     "selling_rate": 666.067,
     "cash_buying_rate": 663.276,
     "cash_selling_rate": 666.067,
-    "published_at": "2026-11-02 15:41:51",
-    "fetched_at": "2026-11-02 15:46:53"
+    "published_at": "2026-11-02 15:53:52",
+    "fetched_at": "2026-11-02 15:56:51"
   }
 ]
