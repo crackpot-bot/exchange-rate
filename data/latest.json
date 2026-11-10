@@ -3,22 +3,22 @@
     "bank_name": "ICBC",
     "currency": "USD",
     "currency_name": "美元",
-    "buying_rate": 665.24,
-    "selling_rate": 668.71,
-    "cash_buying_rate": 665.24,
-    "cash_selling_rate": 668.71,
-    "published_at": "2026-11-10 09:41:52",
-    "fetched_at": "2026-11-10 09:45:55"
+    "buying_rate": 665.3,
+    "selling_rate": 668.77,
+    "cash_buying_rate": 665.3,
+    "cash_selling_rate": 668.77,
+    "published_at": "2026-11-10 09:53:50",
+    "fetched_at": "2026-11-10 09:55:58"
   },
   {
     "bank_name": "ABC",
     "currency": "USD",
     "currency_name": "美元",
-    "buying_rate": 665.781,
-    "selling_rate": 668.583,
-    "cash_buying_rate": 665.781,
-    "cash_selling_rate": 668.583,
-    "published_at": "2026-11-10 09:41:52",
-    "fetched_at": "2026-11-10 09:45:56"
+    "buying_rate": 665.796,
+    "selling_rate": 668.598,
+    "cash_buying_rate": 665.796,
+    "cash_selling_rate": 668.598,
+    "published_at": "2026-11-10 09:53:50",
+    "fetched_at": "2026-11-10 09:55:59"
   }
 ]
