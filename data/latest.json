@@ -7,18 +7,18 @@
     "selling_rate": 668.22,
     "cash_buying_rate": 664.75,
     "cash_selling_rate": 668.22,
-    "published_at": "2026-11-18 20:05:50",
-    "fetched_at": "2026-11-18 20:08:49"
+    "published_at": "2026-11-18 20:17:52",
+    "fetched_at": "2026-11-18 20:19:03"
   },
   {
     "bank_name": "ABC",
     "currency": "USD",
     "currency_name": "美元",
-    "buying_rate": 665.287,
-    "selling_rate": 668.087,
-    "cash_buying_rate": 665.287,
-    "cash_selling_rate": 668.087,
-    "published_at": "2026-11-18 20:05:50",
-    "fetched_at": "2026-11-18 20:08:50"
+    "buying_rate": 665.302,
+    "selling_rate": 668.102,
+    "cash_buying_rate": 665.302,
+    "cash_selling_rate": 668.102,
+    "published_at": "2026-11-18 20:17:52",
+    "fetched_at": "2026-11-18 20:19:04"
   }
 ]
